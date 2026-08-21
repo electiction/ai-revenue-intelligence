@@ -118,8 +118,8 @@ def get_request_status(task_id: str) -> Optional[Dict[str, Any]]:
             return None
     return None
 
-def get_pending_request() -> Optional[Dict[str, Any]]:
-    """Worker function: Check Google Drive (and local) for PENDING tasks."""
+def get_pending_request(worker_id: str = "default_worker") -> Optional[Dict[str, Any]]:
+    """Worker function: Check Google Drive (and local) for PENDING tasks with distributed claim lock."""
     # 1. Check Google Drive
     service = _get_drive_service()
     if service:
@@ -134,8 +134,21 @@ def get_pending_request() -> Optional[Dict[str, Any]]:
                         content = service.files().get_media(fileId=f["id"]).execute()
                         data = json.loads(content.decode("utf-8"))
                         if data.get("status") == "PENDING":
-                            data["_drive_file_id"] = f["id"]
-                            return data
+                            # Try to claim this task atomically
+                            data["status"] = "PROCESSING"
+                            data["claimed_by"] = worker_id
+                            
+                            from googleapiclient.http import MediaIoBaseUpload
+                            new_bytes = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+                            media_update = MediaIoBaseUpload(io.BytesIO(new_bytes), mimetype="application/json", resumable=False)
+                            service.files().update(fileId=f["id"], media_body=media_update).execute()
+                            
+                            # Read back to verify claim
+                            verify_content = service.files().get_media(fileId=f["id"]).execute()
+                            verify_data = json.loads(verify_content.decode("utf-8"))
+                            if verify_data.get("claimed_by") == worker_id:
+                                verify_data["_drive_file_id"] = f["id"]
+                                return verify_data
                     except Exception:
                         continue
         except Exception as e:
