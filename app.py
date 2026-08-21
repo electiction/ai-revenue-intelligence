@@ -3140,23 +3140,21 @@ def _render_queue_file(folder_name: str, platform: str, file: dict,
                     except Exception:
                         st.info("💡 ไม่สามารถเปิดแสดงรูปภาพได้โดยตรง (กดดาวน์โหลดไฟล์ด้านล่างได้ครับ)")
         elif is_video:
-            # Prevent automatic loading of heavy Google Drive iframe which crashes iOS/iPad WebKit
+            # Bypass Google third-party cookie restrictions entirely by streaming video directly from local server
             if f"play_vdo_{fid}" not in st.session_state:
                 st.session_state[f"play_vdo_{fid}"] = False
             
             if not st.session_state[f"play_vdo_{fid}"]:
-                if st.button("🎬 กดเพื่อเล่นวิดีโอ (ป้องกันปัญหามือถือค้าง/รีเฟรช)", key=f"btn_play_{fid}", width="stretch"):
-                    st.session_state[f"play_vdo_{fid}"] = True
-                    st.rerun()
+                if st.button("🎬 กดโหลดวิดีโอเพื่อเล่น (เลี่ยงปัญหาคุกกี้ / หน้าจอค้าง)", key=f"btn_play_{fid}", width="stretch"):
+                    with st.spinner("กำลังโหลดข้อมูลวิดีโอ... (ใช้เวลาประมาณ 1-3 วินาที)"):
+                        media_bytes = download_file(fid)
+                        if media_bytes:
+                            st.session_state[f"q_data_{fid}"] = media_bytes
+                            st.session_state[f"play_vdo_{fid}"] = True
+                            st.rerun()
+                        else:
+                            st.error("ไม่สามารถดึงไฟล์วิดีโอจาก Google Drive ได้")
             else:
-                st.components.v1.iframe(
-                    f"https://drive.google.com/file/d/{fid}/preview", height=340)
-                if st.button("⏸️ ซ่อนเครื่องเล่นวิดีโอ", key=f"btn_hide_{fid}", width="stretch"):
-                    st.session_state[f"play_vdo_{fid}"] = False
-                    st.rerun()
-            with st.expander("โหลดไฟล์มาดูแบบเต็ม (ถ้าตัวเล่นด้านบนไม่ขึ้น)"):
-                if st.button("▶️ โหลดวิดีโอ", key=f"q_prev_{fid}", width="stretch"):
-                    st.session_state[f"q_data_{fid}"] = download_file(fid)
                 media_bytes = st.session_state.get(f"q_data_{fid}")
                 if media_bytes is not None:
                     if len(media_bytes) < 1000:
@@ -3168,9 +3166,13 @@ def _render_queue_file(folder_name: str, platform: str, file: dict,
                             if not os.path.exists(tmp_path) or os.path.getsize(tmp_path) != len(media_bytes):
                                 with open(tmp_path, "wb") as f:
                                     f.write(media_bytes)
-                            st.video(tmp_path)
-                        except Exception:
-                            st.info("💡 ไม่สามารถเล่นวิดีโอนี้ในเบราว์เซอร์ได้ (กดดาวน์โหลดไฟล์ด้านล่างได้ครับ)")
+                            st.video(tmp_path, format="video/mp4")
+                        except Exception as e:
+                            st.error(f"ไม่สามารถเล่นวิดีโอได้: {e}")
+                
+                if st.button("⏸️ ซ่อนเครื่องเล่นวิดีโอ", key=f"btn_hide_{fid}", width="stretch"):
+                    st.session_state[f"play_vdo_{fid}"] = False
+                    st.rerun()
         # เผยแพร่แคปชั่นดึงจากไฟล์
         caption = _queue_caption_for(file)
         
