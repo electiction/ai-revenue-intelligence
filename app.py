@@ -3084,7 +3084,7 @@ def _render_sequence_breakdown(file: dict) -> None:
 def _render_queue_file(folder_name: str, platform: str, file: dict,
                        line_token: str, fb_token: str, fb_page_id: str,
                        ig_business_id: str, all_folders: dict | None = None,
-                       index: int = 1) -> None:
+                       index: int = 1, folder_files: list | None = None) -> None:
     """One queued item: preview, then approve-and-post or reject."""
     mime = file.get("mimeType", "")
     fid = file["id"]
@@ -3171,11 +3171,23 @@ def _render_queue_file(folder_name: str, platform: str, file: dict,
                             st.video(tmp_path)
                         except Exception:
                             st.info("💡 ไม่สามารถเล่นวิดีโอนี้ในเบราว์เซอร์ได้ (กดดาวน์โหลดไฟล์ด้านล่างได้ครับ)")
-        else:
-            caption = _queue_caption_for(file)
-            if caption:
-                st.text_area("ข้อความที่จะโพสต์", value=caption, height=160,
-                             key=f"q_cap_{fid}")
+        # เผยแพร่แคปชั่นดึงจากไฟล์
+        caption = _queue_caption_for(file)
+        
+        # ค้นหาไฟล์แคปชั่นที่มีชื่อตรงกันเพื่อแสดงร่วมกับวิดีโอ/ภาพ
+        if not caption and (is_video or is_image) and folder_files:
+            import os
+            current_name = file.get("name", "")
+            base_name, _ = os.path.splitext(current_name)
+            for f in folder_files:
+                f_name = f.get("name", "")
+                f_base, f_ext = os.path.splitext(f_name)
+                if f_base == base_name and (f_ext.lower() == ".txt" or (f.get("mimeType") or "").startswith("text/")):
+                    caption = _queue_caption_for(f)
+                    break
+
+        # แสดงให้กรอก/แก้ไขข้อความที่จะโพสต์สำหรับทุกประเภทไฟล์
+        text_to_post = st.text_area("✍️ แก้ไขข้อความที่จะโพสต์", value=caption, height=140, key=f"q_cap_{fid}")
 
         # แสดง Sequence แยกแต่ละช็อตของคลิปและ Prompt
         if is_video or mime.startswith("video/"):
@@ -3194,24 +3206,30 @@ def _render_queue_file(folder_name: str, platform: str, file: dict,
             if file.get("webViewLink"):
                 st.markdown(f"[🔗 เปิดใน Drive]({file['webViewLink']})")
 
-        # เลือกปลายทางได้ทุกไฟล์ ไม่ใช่แค่ไฟล์ที่ยังไม่มีแพลตฟอร์ม — ของที่ระบบเดาไว้
-        # ก็เดาผิดได้ และคลิปเดียวลงได้หลายที่ ปุ่มนี้จึงต้องมีเสมอ
+        # เลือกปลายทางย้ายโฟลเดอร์ใน Google Drive
         if all_folders:
             _render_move_to_platform(file, all_folders, folder_name)
 
-        text_to_post = st.session_state.get(f"q_cap_{fid}", caption)
+        # ── เลือกแพลตฟอร์มที่จะโพสต์จริง ──────────────────────────────────────────
+        platform_keys = ["facebook", "instagram", "line_oa", "youtube", "tiktok"]
+        default_platform_idx = platform_keys.index(platform) if platform in platform_keys else 0
+        
+        selected_post_platform = st.selectbox(
+            "📢 เลือกแพลตฟอร์มที่จะส่งโพสต์",
+            options=platform_keys,
+            index=default_platform_idx,
+            format_func=lambda k: PLATFORM_THAI_NAMES.get(k, k),
+            key=f"q_post_plat_{fid}"
+        )
+
         c1, c2 = st.columns(2)
         with c1:
             if st.button("✅ อนุมัติ + โพสต์", key=f"q_ok_{fid}",
                          type="primary", width="stretch"):
-                if not platform:
-                    st.error("ไม่รู้ว่าไฟล์นี้ควรลงแพลตฟอร์มไหน — "
-                             "ตั้งชื่อโฟลเดอร์ให้มีชื่อแพลตฟอร์ม")
-                    return
                 data = media_bytes or (download_file(fid)
                                        if mime.startswith(("image/", "video/")) else None)
                 ok, msg = _do_post(
-                    platform, text_to_post or file["name"],
+                    selected_post_platform, text_to_post or file["name"],
                     line_token, fb_token, fb_page_id,
                     ig_business_id=ig_business_id,
                     image_bytes=data if mime.startswith("image/") else None,
@@ -3531,7 +3549,8 @@ def render_queue_page(line_token: str = "", fb_token: str = "",
             _render_queue_file(folder_name, platform, f,
                                line_token, fb_token, fb_page_id, ig_business_id,
                                all_folders=folders,
-                               index=total)
+                               index=total,
+                               folder_files=all_raw_files)
 
         remaining = len(files) - shown
         if remaining > 0:
