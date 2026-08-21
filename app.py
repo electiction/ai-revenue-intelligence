@@ -3151,7 +3151,12 @@ def _render_queue_file(folder_name: str, platform: str, file: dict,
                         st.warning("⚠️ ไฟล์วิดีโอนี้ใน Google Drive มีขนาด 0 KB (ว่างเปล่า)")
                     else:
                         try:
-                            st.video(media_bytes)
+                            import tempfile, os
+                            tmp_path = os.path.join(tempfile.gettempdir(), f"st_video_cache_{fid}.mp4")
+                            if not os.path.exists(tmp_path) or os.path.getsize(tmp_path) != len(media_bytes):
+                                with open(tmp_path, "wb") as f:
+                                    f.write(media_bytes)
+                            st.video(tmp_path)
                         except Exception:
                             st.info("💡 ไม่สามารถเล่นวิดีโอนี้ในเบราว์เซอร์ได้ (กดดาวน์โหลดไฟล์ด้านล่างได้ครับ)")
         else:
@@ -4181,7 +4186,12 @@ def _render_copilot_video(mi: int, brief: dict, scene: str, aspect: str,
             vid_sn = st.session_state[sn_key]
 
             st.info(f"🏷️ **Serial Number:** `{vid_sn}`  (รหัสนี้จะส่งต่อไปยังหน้าคิวอนุมัติ)")
-            st.video(vid)
+            import tempfile, os
+            tmp_path = os.path.join(tempfile.gettempdir(), f"st_video_cache_{vid_sn}.mp4")
+            if not os.path.exists(tmp_path) or os.path.getsize(tmp_path) != len(vid):
+                with open(tmp_path, "wb") as f:
+                    f.write(vid)
+            st.video(tmp_path)
             st.caption(f"ขนาดไฟล์ {len(vid)/1024/1024:.1f} MB · รหัสวิดีโอ: **{vid_sn}**")
             d1, d2, d3 = st.columns(3)
             with d1:
