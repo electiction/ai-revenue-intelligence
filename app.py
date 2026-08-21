@@ -3140,8 +3140,20 @@ def _render_queue_file(folder_name: str, platform: str, file: dict,
                     except Exception:
                         st.info("💡 ไม่สามารถเปิดแสดงรูปภาพได้โดยตรง (กดดาวน์โหลดไฟล์ด้านล่างได้ครับ)")
         elif is_video:
-            st.components.v1.iframe(
-                f"https://drive.google.com/file/d/{fid}/preview", height=340)
+            # Prevent automatic loading of heavy Google Drive iframe which crashes iOS/iPad WebKit
+            if f"play_vdo_{fid}" not in st.session_state:
+                st.session_state[f"play_vdo_{fid}"] = False
+            
+            if not st.session_state[f"play_vdo_{fid}"]:
+                if st.button("🎬 กดเพื่อเล่นวิดีโอ (ป้องกันปัญหามือถือค้าง/รีเฟรช)", key=f"btn_play_{fid}", width="stretch"):
+                    st.session_state[f"play_vdo_{fid}"] = True
+                    st.rerun()
+            else:
+                st.components.v1.iframe(
+                    f"https://drive.google.com/file/d/{fid}/preview", height=340)
+                if st.button("⏸️ ซ่อนเครื่องเล่นวิดีโอ", key=f"btn_hide_{fid}", width="stretch"):
+                    st.session_state[f"play_vdo_{fid}"] = False
+                    st.rerun()
             with st.expander("โหลดไฟล์มาดูแบบเต็ม (ถ้าตัวเล่นด้านบนไม่ขึ้น)"):
                 if st.button("▶️ โหลดวิดีโอ", key=f"q_prev_{fid}", width="stretch"):
                     st.session_state[f"q_data_{fid}"] = download_file(fid)
